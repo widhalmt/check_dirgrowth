@@ -1,0 +1,82 @@
+#!/bin/bash
+
+LASTCOUNT=0
+SAMPLESIZE=2
+STATUS=0
+MIMETYPE="application/x-gzip"
+#MIMETYPE="text/plain"
+
+_usage() {
+
+echo "Use -d for directory to check"
+exit 0
+
+}
+
+_getopts() {
+  while getopts 'hd:l:c:w:t:' OPT ; do
+    case $OPT in
+      h)
+        _usage ;;
+      d)
+        FILEDIR="${OPTARG}" ;;
+      l)
+        LASTPERFDATA="${OPTARG}" ;;
+      c)
+        CRITICAL="${OPTARG}" ;;
+      w)
+        WARNING="${OPTARG}" ;;
+      t)
+        MIMETYPE="${OPTARG}" ;;
+      *)
+        _usage ;;
+    esac
+  done
+}
+
+ARGUMENTSTRING=$(echo $@ | sed 's/growth=[^-]*//g')
+
+_getopts ${ARGUMENTSTRING}
+
+LASTCOUNT=$(echo ${LASTPERFDATA} | cut -d" " -f1 | cut -d= -f2 | tr -d "c")
+
+FILESTOTAL="$(find ${FILEDIR} -type f | wc -l)"
+
+GROWTH="$(expr ${FILESTOTAL} - ${LASTCOUNT})"
+
+if [ ${GROWTH} -lt ${CRITICAL} ]
+then
+  STATUS=2
+elif [ ${GROWTH} -lt ${WARNING} ]
+then
+  STATUS=1
+fi
+
+SAMPLE=$(find ${FILEDIR} -type f | shuf -n ${SAMPLESIZE})
+
+#file -b --mime-type /tmp/test.gz 
+#application/x-gzip
+
+for i in ${SAMPLE}
+do
+  REALMIMETYPE="$(file -b --mime-type ${i})"
+  if [ ${REALMIMETYPE} != ${MIMETYPE} ]
+  then
+    STATUS=2
+  fi
+done
+
+if cmp --silent $(echo ${SAMPLE} | awk '{ print $1 }') $(echo ${SAMPLE} | awk '{ print $2 }')
+then
+  IDENTICAL="identical"
+  STATUS=2
+else
+  IDENTICAL="different"
+fi
+
+echo "Files in directory : ${FILESTOTAL}, that is ${GROWTH} more than last time
+Sample files are of type ${REALMIMETYPE}
+Two random sample files' contents are ${IDENTICAL}
+|count=${FILESTOTAL}c growth=${GROWTH};${WARNING};${CRITICAL}"
+
+exit ${STATUS}
